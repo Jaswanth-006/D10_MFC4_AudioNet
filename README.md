@@ -46,7 +46,7 @@ A custom ResNet architecture is implemented using PyTorch. Convolutional layers 
 
 Residual block formulation:
 
-y = F(x) + x
+                                                                             y = F(x) + x
 
 where x is the input and F(x) is the residual mapping.
 
@@ -56,23 +56,23 @@ Consider a simple deep network composed of multiple layers trying to learn a map
 
 In a plain CNN, the output after one block is:
 
-H(x) = Wx
+                                                                              H(x) = Wx
 
 During backpropagation, the gradient becomes:
 
-∂L/∂x = ∂L/∂H · W
+                                                                         ∂L/∂x = ∂L/∂H · W
 
 If W has eigenvalues less than 1, repeated multiplication across many layers causes gradients to shrink exponentially, leading to the vanishing gradient problem.
 
 In a Residual Block, the mapping is reformulated as:
 
-H(x) = F(x) + x
+                                                                          H(x) = F(x) + x
 
-where F(x) = Wx.
+                                                                          where F(x) = Wx.
 
 Now the gradient becomes:
 
-∂L/∂x = ∂L/∂H · (W + I)
+                                                                      ∂L/∂x = ∂L/∂H · (W + I)
 
 Because the identity matrix I is added, the gradient always has a direct path, ensuring stable gradient flow.
 
