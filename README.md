@@ -140,21 +140,19 @@ The implemented ResNet successfully learned discriminative features from Mel spe
 ## Content and Folder Structure
 
 ```bash
-├── code/                   
-│   ├── model.py            
-│   ├── train.py            
+├── code/
+|   ├── audio-cnn-visualisation/
+|       └── src/app/              
 │   ├── main.py            
-│   └── requirements.txt
+│   ├── model.py            
+│   ├── requirements.txt
+|   ├── train.py            
 │
 ├── doc/                   
-│   ├── report/
-│   ├── figures/
-│   ├── base_paper/
-│   ├── reference_papers/
-│   └── presentation.pptx
-│
-├── audio-cnn-viz/          
-│   └── src/app/
-│
+│   ├── MCF4_0th_review.pdf
+│   ├── MFC4_1st_review.pdf
+│   ├── base paper.pdf
+│   ├── theory.excalidraw
+│ 
 └── README.md
 ```
