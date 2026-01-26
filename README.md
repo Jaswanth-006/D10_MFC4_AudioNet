@@ -36,7 +36,7 @@ Environmental audio classification plays a key role in smart cities, surveillanc
 
 Raw audio signals s(t) do not possess spatial structure suitable for convolutional neural networks. Therefore, Short-Time Fourier Transform (STFT) is applied followed by Mel-scale filtering to approximate human auditory perception.
 
-s(t) → STFT → Mel Spectrogram (Time × Frequency)
+                                                    s(t) → STFT → Mel Spectrogram (Time × Frequency)
 
 The resulting Mel spectrogram is treated as a 2D image input to the neural network.
 
