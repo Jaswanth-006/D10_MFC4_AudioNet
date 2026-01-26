@@ -71,7 +71,7 @@ In a Residual Block, the mapping is reformulated as:
 
 Now the gradient becomes:
 
-                                                    ∂L/∂x = ∂L/∂H · (W + I)
+                                                      ∂L/∂x = ∂L/∂H · (W + I)
 
 Because the identity matrix I is added, the gradient always has a direct path, ensuring stable gradient flow.
 
