@@ -1,106 +1,124 @@
 import base64
 import io
-import modal
 import numpy as np
-import requests
+import torch
 import torch.nn as nn
 import torchaudio.transforms as T
-import torch
-from pydantic import BaseModel
 import soundfile as sf
 import librosa
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from pathlib import Path
 
+# Import your model
 from model import AudioCNN
 
-app = modal.App("audio-cnn-inference")
-
-image = (modal.Image.debian_slim()
-         .pip_install_from_requirements("requirements.txt")
-         .apt_install(["libsndfile1"])
-         .add_local_python_source("model"))
-
-model_volume = modal.Volume.from_name("esc-model")
-
+# Global variables for model storage
+MODEL_PATH = Path("./models/best_model.pth")
+ml_models = {}
 
 class AudioProcessor:
     def __init__(self):
         self.transform = nn.Sequential(
             T.MelSpectrogram(
-                sample_rate=22050,
-                n_fft=1024,
-                hop_length=512,
-                n_mels=128,
-                f_min=0,
-                f_max=11025
+                sample_rate=22050, n_fft=1024, hop_length=512, n_mels=128, f_min=0, f_max=11025
             ),
             T.AmplitudeToDB()
         )
 
     def process_audio_chunk(self, audio_data):
         waveform = torch.from_numpy(audio_data).float()
-
         waveform = waveform.unsqueeze(0)
-
         spectrogram = self.transform(waveform)
-
         return spectrogram.unsqueeze(0)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Load model on startup
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Loading model from {MODEL_PATH} to {device}...")
+    
+    if not MODEL_PATH.exists():
+        print(f"ERROR: Model not found at {MODEL_PATH}. Please run train.py first.")
+        yield
+        return
+
+    checkpoint = torch.load(MODEL_PATH, map_location=device)
+    classes = checkpoint['classes']
+    
+    model = AudioCNN(num_classes=len(classes))
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.to(device)
+    model.eval()
+    
+    ml_models["model"] = model
+    ml_models["classes"] = classes
+    ml_models["processor"] = AudioProcessor()
+    ml_models["device"] = device
+    
+    print("Model loaded successfully!")
+    yield
+    # Clean up on shutdown
+    ml_models.clear()
+
+app = FastAPI(lifespan=lifespan)
+
+# Setup CORS to allow Next.js (usually localhost:3000) to talk to this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # In production, replace with ["http://localhost:3000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class InferenceRequest(BaseModel):
     audio_data: str
 
+@app.post("/inference")
+async def inference(request: InferenceRequest):
+    if "model" not in ml_models:
+        raise HTTPException(status_code=500, detail="Model not loaded")
+        
+    model = ml_models["model"]
+    classes = ml_models["classes"]
+    processor = ml_models["processor"]
+    device = ml_models["device"]
 
-@app.cls(image=image, gpu="A10G", volumes={"/models": model_volume}, scaledown_window=300)
-class AudioClassifier:
-    @modal.enter()
-    def load_model(self):
-        print("Loading models on enter")
-        self.device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu')
-
-        checkpoint = torch.load('/models/best_model.pth',
-                                map_location=self.device)
-        self.classes = checkpoint['classes']
-
-        self.model = AudioCNN(num_classes=len(self.classes))
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.model.to(self.device)
-        self.model.eval()
-
-        self.audio_processor = AudioProcessor()
-        print("Model loaded on enter")
-
-    @modal.fastapi_endpoint(method="POST")
-    def inference(self, request: InferenceRequest):
+    try:
+        # Decode audio
         audio_bytes = base64.b64decode(request.audio_data)
+        audio_data, sample_rate = sf.read(io.BytesIO(audio_bytes), dtype="float32")
 
-        audio_data, sample_rate = sf.read(
-            io.BytesIO(audio_bytes), dtype="float32")
-
+        # Preprocessing
         if audio_data.ndim > 1:
             audio_data = np.mean(audio_data, axis=1)
 
         if sample_rate != 44100:
-            audio_data = librosa.resample(
-                y=audio_data, orig_sr=sample_rate, target_sr=44100)
+            audio_data = librosa.resample(y=audio_data, orig_sr=sample_rate, target_sr=44100)
 
-        spectrogram = self.audio_processor.process_audio_chunk(audio_data)
-        spectrogram = spectrogram.to(self.device)
+        spectrogram = processor.process_audio_chunk(audio_data)
+        spectrogram = spectrogram.to(device)
 
+        # Inference
         with torch.no_grad():
-            output, feature_maps = self.model(
-                spectrogram, return_feature_maps=True)
-
+            output, feature_maps = model(spectrogram, return_feature_maps=True)
+            
             output = torch.nan_to_num(output)
             probabilities = torch.softmax(output, dim=1)
             top3_probs, top3_indicies = torch.topk(probabilities[0], 3)
 
-            predictions = [{"class": self.classes[idx.item()], "confidence": prob.item()}
-                           for prob, idx in zip(top3_probs, top3_indicies)]
+            predictions = [
+                {"class": classes[idx.item()], "confidence": prob.item()}
+                for prob, idx in zip(top3_probs, top3_indicies)
+            ]
 
+            # Process visualizations
             viz_data = {}
             for name, tensor in feature_maps.items():
-                if tensor.dim() == 4:  # [batch_size, channels, height, width]
+                if tensor.dim() == 4:
                     aggregated_tensor = torch.mean(tensor, dim=1)
                     squeezed_tensor = aggregated_tensor.squeeze(0)
                     numpy_array = squeezed_tensor.cpu().numpy()
@@ -113,6 +131,7 @@ class AudioClassifier:
             spectrogram_np = spectrogram.squeeze(0).squeeze(0).cpu().numpy()
             clean_spectrogram = np.nan_to_num(spectrogram_np)
 
+            # Waveform decimation for visualization
             max_samples = 8000
             waveform_sample_rate = 44100
             if len(audio_data) > max_samples:
@@ -121,44 +140,24 @@ class AudioClassifier:
             else:
                 waveform_data = audio_data
 
-        response = {
-            "predictions": predictions,
-            "visualization": viz_data,
-            "input_spectrogram": {
-                "shape": list(clean_spectrogram.shape),
-                "values": clean_spectrogram.tolist()
-            },
-            "waveform": {
-                "values": waveform_data.tolist(),
-                "sample_rate": waveform_sample_rate,
-                "duration": len(audio_data) / waveform_sample_rate
+            return {
+                "predictions": predictions,
+                "visualization": viz_data,
+                "input_spectrogram": {
+                    "shape": list(clean_spectrogram.shape),
+                    "values": clean_spectrogram.tolist()
+                },
+                "waveform": {
+                    "values": waveform_data.tolist(),
+                    "sample_rate": waveform_sample_rate,
+                    "duration": len(audio_data) / waveform_sample_rate
+                }
             }
-        }
 
-        return response
+    except Exception as e:
+        print(f"Error during inference: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# @app.local_entrypoint()
-# def main():
-#     audio_data, sample_rate = sf.read("chirpingbirds.wav")
-
-#     buffer = io.BytesIO()
-#     sf.write(buffer, audio_data, sample_rate, format="WAV")
-#     audio_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-#     payload = {"audio_data": audio_b64}
-
-#     server = AudioClassifier()
-#     url = server.inference.get_web_url()
-#     response = requests.post(url, json=payload)
-#     response.raise_for_status()
-
-#     result = response.json()
-
-#     waveform_info = result.get("waveform", {})
-#     if waveform_info:
-#         values = waveform_info.get("values", {})
-#         print(f"First 10 values: {[round(v, 4) for v in values[:10]]}...")
-#         print(f"Duration: {waveform_info.get("duration", 0)}")
-
-#     print("Top predictions:")
-#     for pred in result.get("predictions", []):
-#         print(f"  -{pred["class"]} {pred["confidence"]:0.2%}")
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
