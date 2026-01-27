@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,6 +8,7 @@ import torchaudio
 import torchaudio.transforms as T
 import pandas as pd
 import numpy as np
+import soundfile as sf
 import shutil
 import urllib.request
 import zipfile
@@ -20,31 +22,89 @@ from torch.utils.tensorboard import SummaryWriter
 from model import AudioCNN
 
 # --- Configuration ---
-DATA_ROOT = Path("./data")
+# 1. We will try to use your local path first.
+#    If it's broken, we will fix it in the 'data' folder.
+LOCAL_SOURCE_PATH = Path(r"C:\CSE-AI\SEM-4\Mathematics for Computing 4\Dataset\ESC-50-master")
+DATA_ROOT = Path("./data") # Fallback folder for downloads
 MODEL_DIR = Path("./models")
-LOG_DIR = Path("./runs")
+LOG_DIR = Path("./runs/v2_experiment_spectrogram") 
 ESC50_URL = "https://github.com/karolpiczak/ESC-50/archive/master.zip"
 
-def download_dataset():
-    """Downloads and extracts the ESC-50 dataset locally."""
-    if (DATA_ROOT / "ESC-50-master").exists():
-        print("Dataset already exists.")
-        return
+def check_gpu():
+    if torch.cuda.is_available():
+        print(f"✅ GPU Detected: {torch.cuda.get_device_name(0)}")
+        return torch.device('cuda')
+    else:
+        print("⚠️ GPU NOT detected. Training will be slow on CPU.")
+        return torch.device('cpu')
 
-    print(f"Downloading ESC-50 dataset to {DATA_ROOT}...")
-    DATA_ROOT.mkdir(exist_ok=True, parents=True)
+def validate_and_fix_dataset(local_path, fallback_root):
+    """
+    Checks if the dataset at local_path is valid (2000 files).
+    If invalid, it downloads a fresh copy to fallback_root.
+    """
+    # 1. Check Local Path
+    if local_path.exists():
+        audio_files = list((local_path / "audio").glob("*.wav"))
+        nested_audio = list((local_path / "ESC-50-master" / "audio").glob("*.wav"))
+        
+        # Check main folder
+        if len(audio_files) == 2000:
+            return local_path
+        # Check nested folder
+        if len(nested_audio) == 2000:
+            return local_path / "ESC-50-master"
+            
+        print(f"⚠️ Local dataset corrupted: Found {len(audio_files) + len(nested_audio)} files (Expected 2000).")
     
-    zip_path = DATA_ROOT / "esc50.zip"
-    urllib.request.urlretrieve(ESC50_URL, zip_path)
-    
-    print("Extracting...")
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(DATA_ROOT)
-    
-    os.remove(zip_path)
-    print("Download complete.")
+    # 2. If we reach here, local is missing or broken. Check Fallback.
+    fallback_path = fallback_root / "ESC-50-master"
+    if fallback_path.exists():
+        count = len(list((fallback_path / "audio").glob("*.wav")))
+        if count == 2000:
+            print(f"✅ Found valid cached dataset at {fallback_path}")
+            return fallback_path
+        else:
+             print("⚠️ Cached dataset also corrupted. Re-downloading...")
+             shutil.rmtree(fallback_root, ignore_errors=True)
 
-# --- Dataset Class (Unchanged logic, just path handling) ---
+    # 3. Download and Extract
+    print(f"⬇️ Downloading fresh ESC-50 dataset to {fallback_root}...")
+    fallback_root.mkdir(exist_ok=True, parents=True)
+    zip_path = fallback_root / "esc50.zip"
+    
+    # Progress bar hook
+    def progress_hook(t):
+        last_b = [0]
+        def update_to(b=1, bsize=1, tsize=None):
+            if tsize is not None: t.total = tsize
+            t.update((b - last_b[0]) * bsize)
+            last_b[0] = b
+        return update_to
+
+    try:
+        with tqdm(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc="Downloading") as t:
+            urllib.request.urlretrieve(ESC50_URL, zip_path, reporthook=progress_hook(t))
+            
+        print("📦 Extracting...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(fallback_root)
+        os.remove(zip_path)
+        
+        # Verify again
+        new_path = fallback_root / "ESC-50-master"
+        count = len(list((new_path / "audio").glob("*.wav")))
+        if count == 2000:
+            print("✅ Download & Extraction successful.")
+            return new_path
+        else:
+            raise RuntimeError(f"Download failed. Extracted {count} files.")
+            
+    except Exception as e:
+        print(f"❌ Error during download/extraction: {e}")
+        return None
+
+# --- Dataset Class ---
 class ESC50Dataset(Dataset):
     def __init__(self, data_dir, metadata_file, split="train", transform=None):
         super().__init__()
@@ -68,10 +128,17 @@ class ESC50Dataset(Dataset):
     def __getitem__(self, idx):
         row = self.metadata.iloc[idx]
         audio_path = self.data_dir / "audio" / row['filename']
-        waveform, sample_rate = torchaudio.load(audio_path)
+        
+        # Robust read
+        if not audio_path.exists():
+             raise FileNotFoundError(f"❌ Missing file: {audio_path}")
 
-        if waveform.shape[0] > 1:
-            waveform = torch.mean(waveform, dim=0, keepdim=True)
+        # Use soundfile (Fix for Windows/Torchcodec)
+        audio_np, sample_rate = sf.read(str(audio_path), dtype='float32')
+        waveform = torch.from_numpy(audio_np).float()
+        
+        if waveform.ndim == 1: waveform = waveform.unsqueeze(0)
+        if waveform.shape[0] > 1: waveform = torch.mean(waveform, dim=0, keepdim=True)
 
         if self.transform:
             spectrogram = self.transform(waveform)
@@ -92,13 +159,20 @@ def mixup_criterion(criterion, pred, y_a, y_b, lam):
     return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
 def train():
-    # 1. Setup Directories
-    download_dataset()
     MODEL_DIR.mkdir(exist_ok=True)
-    LOG_DIR.mkdir(exist_ok=True)
+    LOG_DIR.mkdir(exist_ok=True, parents=True)
     
-    esc50_dir = DATA_ROOT / "ESC-50-master"
-    meta_path = esc50_dir / "meta" / "esc50.csv"
+    device = check_gpu()
+
+    # 1. Validation & Repair Step
+    dataset_path = validate_and_fix_dataset(LOCAL_SOURCE_PATH, DATA_ROOT)
+    
+    if dataset_path is None:
+        print("❌ CRITICAL: Could not prepare dataset.")
+        return
+
+    meta_path = dataset_path / "meta" / "esc50.csv"
+    print(f"📂 Using verified dataset at: {dataset_path}")
 
     # 2. Transforms
     train_transform = nn.Sequential(
@@ -107,41 +181,42 @@ def train():
         T.FrequencyMasking(freq_mask_param=30),
         T.TimeMasking(time_mask_param=80)
     )
-
     val_transform = nn.Sequential(
         T.MelSpectrogram(sample_rate=22050, n_fft=1024, hop_length=512, n_mels=128, f_min=0, f_max=11025),
         T.AmplitudeToDB()
     )
 
     # 3. Data Loaders
-    train_dataset = ESC50Dataset(data_dir=esc50_dir, metadata_file=meta_path, split="train", transform=train_transform)
-    val_dataset = ESC50Dataset(data_dir=esc50_dir, metadata_file=meta_path, split="test", transform=val_transform)
+    train_dataset = ESC50Dataset(data_dir=dataset_path, metadata_file=meta_path, split="train", transform=train_transform)
+    val_dataset = ESC50Dataset(data_dir=dataset_path, metadata_file=meta_path, split="test", transform=val_transform)
 
     print(f"Training samples: {len(train_dataset)}")
     print(f"Val samples: {len(val_dataset)}")
 
-    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=0) # Set num_workers > 0 for faster data loading on Linux/Mac
-    test_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=0)
+    # Set pin_memory=True for GPU training
+    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=0, pin_memory=True)
+    test_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=0, pin_memory=True)
 
     # 4. Model Setup
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
-    
     model = AudioCNN(num_classes=len(train_dataset.classes))
     model.to(device)
 
     num_epochs = 100
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.AdamW(model.parameters(), lr=0.0005, weight_decay=0.01)
-    
     scheduler = OneCycleLR(optimizer, max_lr=0.002, epochs=num_epochs, steps_per_epoch=len(train_dataloader), pct_start=0.1)
     
     writer = SummaryWriter(log_dir=str(LOG_DIR))
     best_accuracy = 0.0
+    min_loss = float('inf')
+    writer.add_text('Config', 'Model: ResNet-18 (2D CNN) | Input: Mel-Spectrogram | Latent Dim: 512')
 
     # 5. Training Loop
-    print("Starting training...")
+    print(f"Starting training on {device}...")
+    total_start_time = time.time()
+
     for epoch in range(num_epochs):
+        epoch_start_time = time.time()
         model.train()
         epoch_loss = 0.0
         
@@ -166,14 +241,10 @@ def train():
             progress_bar.set_postfix({'Loss': f'{loss.item():.4f}'})
 
         avg_epoch_loss = epoch_loss / len(train_dataloader)
-        writer.add_scalar('Loss/Train', avg_epoch_loss, epoch)
+        if avg_epoch_loss < min_loss: min_loss = avg_epoch_loss
 
-        # Validation
         model.eval()
-        correct = 0
-        total = 0
-        val_loss = 0
-        
+        correct = 0; total = 0; val_loss = 0
         with torch.no_grad():
             for data, target in test_dataloader:
                 data, target = data.to(device), target.to(device)
@@ -185,11 +256,14 @@ def train():
 
         accuracy = 100 * correct / total
         avg_val_loss = val_loss / len(test_dataloader)
-        
+        epoch_duration = time.time() - epoch_start_time
+
+        writer.add_scalar('Loss/Train', avg_epoch_loss, epoch)
         writer.add_scalar('Loss/Validation', avg_val_loss, epoch)
         writer.add_scalar('Accuracy/Validation', accuracy, epoch)
+        writer.add_scalar('Performance/Time_Per_Epoch', epoch_duration, epoch)
         
-        print(f'Epoch {epoch+1} - Val Loss: {avg_val_loss:.4f}, Acc: {accuracy:.2f}%')
+        print(f'Epoch {epoch+1} - Val Loss: {avg_val_loss:.4f}, Acc: {accuracy:.2f}%, Time: {epoch_duration:.2f}s')
 
         if accuracy > best_accuracy:
             best_accuracy = accuracy
@@ -202,8 +276,16 @@ def train():
             }, save_path)
             print(f'New best model saved to {save_path}')
 
+    total_duration = time.time() - total_start_time
+    writer.add_text('Results', f'Best Acc: {best_accuracy:.2f}% | Min Loss: {min_loss:.4f} | Total Time: {total_duration:.2f}s')
     writer.close()
-    print("Done!")
+    
+    print("--------------------------------------------------")
+    print(f"Training Completed on {device}.")
+    print(f"Total Time: {total_duration:.2f} seconds")
+    print(f"Minimum Loss Achieved: {min_loss:.4f}")
+    print(f"Best Validation Accuracy: {best_accuracy:.2f}%")
+    print("--------------------------------------------------")
 
 if __name__ == "__main__":
     train()
