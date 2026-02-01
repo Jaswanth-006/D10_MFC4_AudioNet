@@ -36,7 +36,7 @@ Environmental audio classification plays a key role in smart cities, surveillanc
 
 Raw audio signals s(t) do not possess spatial structure suitable for convolutional neural networks. Therefore, Short-Time Fourier Transform (STFT) is applied followed by Mel-scale filtering to approximate human auditory perception.
 
-s(t) → STFT → Mel Spectrogram (Time × Frequency)
+                                             s(t) → STFT → Mel Spectrogram (Time × Frequency)
 
 The resulting Mel spectrogram is treated as a 2D image input to the neural network.
 
@@ -60,18 +60,19 @@ In a plain CNN, the output after one block is:
 
 During backpropagation, the gradient becomes:
 
-                                             ∂L/∂x = ∂L/∂H · W
+                                            ∂L/∂x = ∂L/∂H · W
 
 If W has eigenvalues less than 1, repeated multiplication across many layers causes gradients to shrink exponentially, leading to the vanishing gradient problem.
 
 In a Residual Block, the mapping is reformulated as:
 
-                                              H(x) = F(x) + x
+                                                   H(x) = F(x) + x
+
 where F(x) = Wx.
 
 Now the gradient becomes:
 
-                         ∂L/∂x = ∂L/∂H · (W + I)
+                        ∂L/∂x = ∂L/∂H · (W + I)
 
 Because the identity matrix I is added, the gradient always has a direct path, ensuring stable gradient flow.
 
@@ -128,32 +129,24 @@ The implemented ResNet successfully learned discriminative features from Mel spe
 3. Piczak, ESC-50: Dataset for Environmental Sound Classification, 2015
    [https://github.com/karolpiczak/ESC-50](https://github.com/karolpiczak/ESC-50)
 
-4. Librosa Documentation
-   [https://librosa.org/doc/latest/index.html](https://librosa.org/doc/latest/index.html)
-
-5. PyTorch Audio
-   [https://pytorch.org/audio/stable/index.html](https://pytorch.org/audio/stable/index.html)
-
 ---
 
 ## Content and Folder Structure
 
 ```bash
-├── code/                   
-│   ├── model.py            
-│   ├── train.py            
+├── code/
+|   ├── audio-cnn-visualisation/
+|       └── src/app/              
 │   ├── main.py            
-│   └── requirements.txt
+│   ├── model.py            
+│   ├── requirements.txt
+|   ├── train.py            
 │
 ├── doc/                   
-│   ├── report/
-│   ├── figures/
-│   ├── base_paper/
-│   ├── reference_papers/
-│   └── presentation.pptx
-│
-├── audio-cnn-viz/          
-│   └── src/app/
-│
+│   ├── MCF4_0th_review.pdf
+│   ├── MFC4_1st_review.pdf
+│   ├── base paper.pdf
+│   ├── theory.excalidraw
+│ 
 └── README.md
 ```
