@@ -42,13 +42,13 @@ class AudioCNN(nn.Module):
         super().__init__()
         self.conv1 = nn.Sequential(
             nn.Conv2d(1, 32, 7, stride=2, padding=3, bias=False), nn.BatchNorm2d(32), nn.ReLU(inplace=True), nn.MaxPool2d(3, stride=2, padding=1))
-        self.layer1 = nn.ModuleList([ResidualBlock(32, 32) for i in range(2)])
+        self.layer1 = nn.ModuleList([ResidualBlock(32, 32) for i in range(3)])
         self.layer2 = nn.ModuleList(
-            [ResidualBlock(32 if i == 0 else 48, 48, stride=2 if i == 0 else 1) for i in range(3)])
+            [ResidualBlock(32 if i == 0 else 48, 48, stride=2 if i == 0 else 1) for i in range(4)])
         self.layer3 = nn.ModuleList(
-            [ResidualBlock(48 if i == 0 else 72, 72, stride=2 if i == 0 else 1) for i in range(4)])
+            [ResidualBlock(48 if i == 0 else 72, 72, stride=2 if i == 0 else 1) for i in range(6)])
         self.layer4 = nn.ModuleList(
-            [ResidualBlock(72 if i == 0 else 108, 108, stride=2 if i == 0 else 1) for i in range(2)])
+            [ResidualBlock(72 if i == 0 else 108, 108, stride=2 if i == 0 else 1) for i in range(3)])
         
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
