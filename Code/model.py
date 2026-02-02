@@ -42,19 +42,18 @@ class AudioCNN(nn.Module):
         super().__init__()
         self.conv1 = nn.Sequential(
             nn.Conv2d(1, 32, 7, stride=2, padding=3, bias=False), nn.BatchNorm2d(32), nn.ReLU(inplace=True), nn.MaxPool2d(3, stride=2, padding=1))
-        self.layer1 = nn.ModuleList([ResidualBlock(32, 32) for i in range(3)])
+        self.layer1 = nn.ModuleList([ResidualBlock(32, 32) for i in range(2)])
         self.layer2 = nn.ModuleList(
-            [ResidualBlock(32 if i == 0 else 48, 48, stride=2 if i == 0 else 1) for i in range(4)])
+            [ResidualBlock(32 if i == 0 else 48, 48, stride=2 if i == 0 else 1) for i in range(3)])
         self.layer3 = nn.ModuleList(
-            [ResidualBlock(48 if i == 0 else 72, 72, stride=2 if i == 0 else 1) for i in range(6)])
+            [ResidualBlock(48 if i == 0 else 72, 72, stride=2 if i == 0 else 1) for i in range(4)])
         self.layer4 = nn.ModuleList(
-            [ResidualBlock(72 if i == 0 else 108, 108, stride=2 if i == 0 else 1) for i in range(3)])
-        self.layer5 = nn.ModuleList(
-            [ResidualBlock(108 if i == 0 else 162, 162, stride=2 if i == 0 else 1) for i in range(1)])
+            [ResidualBlock(72 if i == 0 else 108, 108, stride=2 if i == 0 else 1) for i in range(2)])
+        
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.dropout = nn.Dropout(0.5)
-        self.fc = nn.Linear(162, num_classes)
+        self.fc = nn.Linear(108, num_classes)
 
     def forward(self, x, return_feature_maps=False):
         if not return_feature_maps:
@@ -66,8 +65,6 @@ class AudioCNN(nn.Module):
             for block in self.layer3:
                 x = block(x)
             for block in self.layer4:
-                x = block(x)
-            for block in self.layer5:
                 x = block(x)
             x = self.avgpool(x)
             x = x.view(x.size(0), -1)
@@ -95,9 +92,6 @@ class AudioCNN(nn.Module):
                 x = block(x, feature_maps, prefix=f"layer4.block{i}")
             feature_maps["layer4"] = x
 
-            for i, block in enumerate(self.layer5):
-                x = block(x, feature_maps, prefix=f"layer5.block{i}")
-            feature_maps["layer5"] = x
 
             x = self.avgpool(x)
             x = x.view(x.size(0), -1)
