@@ -147,26 +147,26 @@ def train():
     if dataset_path is None: return
     meta_path = dataset_path / "meta" / "esc50.csv"
 
-    # --- UPDATED TRANSFORMS (64 x 128) ---
+    # --- UPDATED TRANSFORMS (32 x 64) ---
     train_transform = nn.Sequential(
-        # 1. Mel Spectrogram (Height: 64)
-        T.MelSpectrogram(sample_rate=44100, n_fft=1024, hop_length=512, n_mels=64, f_min=0, f_max=11025),
+        # 1. Mel Spectrogram (Height: 32)
+        T.MelSpectrogram(sample_rate=44100, n_fft=1024, hop_length=512, n_mels=32, f_min=0, f_max=11025),
         
         # 2. Decibel Conversion
         T.AmplitudeToDB(),
         
-        # 3. RESIZE (Forces Width to 128)
-        Resize((64, 128)),
+        # 3. RESIZE (Forces Width to 64)
+        Resize((32, 64)),
 
-        # 4. Augmentation
-        T.FrequencyMasking(freq_mask_param=15), # Reduced mask size for smaller image
-        T.TimeMasking(time_mask_param=40)     # Reduced mask size for smaller image
+        # 4. Augmentation (Reduced for small image)
+        T.FrequencyMasking(freq_mask_param=8), 
+        T.TimeMasking(time_mask_param=20)     
     )
 
     val_transform = nn.Sequential(
-        T.MelSpectrogram(sample_rate=44100, n_fft=1024, hop_length=512, n_mels=64, f_min=0, f_max=11025),
+        T.MelSpectrogram(sample_rate=44100, n_fft=1024, hop_length=512, n_mels=32, f_min=0, f_max=11025),
         T.AmplitudeToDB(),
-        Resize((64, 128)) 
+        Resize((32, 64)) 
     )
 
     train_dataset = ESC50Dataset(dataset_path, meta_path, "train", train_transform)
