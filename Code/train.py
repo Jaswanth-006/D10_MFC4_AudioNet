@@ -6,13 +6,14 @@ import torch.nn as nn
 import torch.optim as optim
 import torchaudio
 import torchaudio.transforms as T
+from torchvision.transforms import Resize  # <--- NEW: Required for resizing
 import pandas as pd
 import numpy as np
 import soundfile as sf
 import shutil
 import urllib.request
 import zipfile
-import matplotlib.pyplot as plt  # <--- NEW: For saving images
+import matplotlib.pyplot as plt
 from pathlib import Path
 from torch.utils.data import Dataset, DataLoader
 from torch.optim.lr_scheduler import OneCycleLR
@@ -27,25 +28,17 @@ LOCAL_SOURCE_PATH = Path(r"C:\CSE-AI\SEM-4\Mathematics for Computing 4\Dataset\E
 DATA_ROOT = Path("./data")
 MODEL_DIR = Path("./models")
 LOG_DIR = Path("./runs/v2_experiment_spectrogram") 
-IMG_DIR = Path("./spectrogram_samples")  # <--- NEW: Folder for saved images
+IMG_DIR = Path("./spectrogram_samples")
 ESC50_URL = "https://github.com/karolpiczak/ESC-50/archive/master.zip"
 
-# --- NEW: Helper to Save Images ---
+# --- Helper to Save Images ---
 def save_spectrogram_batch(spectrograms, labels, classes, epoch, batch_idx, prefix="train"):
-    """
-    Saves a batch of spectrograms as a single PNG image grid.
-    """
     IMG_DIR.mkdir(exist_ok=True)
-    
-    # Take up to 8 images from the batch
     num_imgs = min(len(spectrograms), 8)
     fig, axes = plt.subplots(1, num_imgs, figsize=(20, 4))
-    
-    # If only 1 image, wrap axes in list
     if num_imgs == 1: axes = [axes]
     
     for i in range(num_imgs):
-        # Convert tensor to numpy: [1, 128, 431] -> [128, 431]
         spec = spectrograms[i].squeeze().cpu().numpy()
         label_id = labels[i].item()
         label_name = classes[label_id]
@@ -56,11 +49,9 @@ def save_spectrogram_batch(spectrograms, labels, classes, epoch, batch_idx, pref
         ax.axis('off')
     
     plt.tight_layout()
-    # Save file: e.g., spectrogram_samples/epoch_1_batch_0_train.png
     save_path = IMG_DIR / f"epoch_{epoch+1}_batch_{batch_idx}_{prefix}.png"
     plt.savefig(save_path)
     plt.close(fig)
-    # print(f"📸 Saved spectrogram sample to {save_path}")
 
 def check_gpu():
     if torch.cuda.is_available():
@@ -71,7 +62,6 @@ def check_gpu():
         return torch.device('cpu')
 
 def validate_and_fix_dataset(local_path, fallback_root):
-    # (Same validation logic as before - skipping for brevity, keep your existing code here)
     if local_path.exists():
         audio_files = list((local_path / "audio").glob("*.wav"))
         nested_audio = list((local_path / "ESC-50-master" / "audio").glob("*.wav"))
@@ -105,7 +95,7 @@ def validate_and_fix_dataset(local_path, fallback_root):
         print(f"❌ Error: {e}")
         return None
 
-# --- Dataset Class (Same as before) ---
+# --- Dataset Class ---
 class ESC50Dataset(Dataset):
     def __init__(self, data_dir, metadata_file, split="train", transform=None):
         super().__init__()
@@ -125,12 +115,17 @@ class ESC50Dataset(Dataset):
         row = self.metadata.iloc[idx]
         audio_path = self.data_dir / "audio" / row['filename']
         if not audio_path.exists(): raise FileNotFoundError(f"❌ Missing file: {audio_path}")
+        
+        # Load audio (sf.read usually returns 44100Hz for ESC-50)
         audio_np, sample_rate = sf.read(str(audio_path), dtype='float32')
         waveform = torch.from_numpy(audio_np).float()
+        
         if waveform.ndim == 1: waveform = waveform.unsqueeze(0)
         if waveform.shape[0] > 1: waveform = torch.mean(waveform, dim=0, keepdim=True)
+        
         if self.transform: spectrogram = self.transform(waveform)
         else: spectrogram = waveform
+        
         return spectrogram, row['label']
 
 def mixup_data(x, y):
@@ -153,16 +148,27 @@ def train():
     if dataset_path is None: return
     meta_path = dataset_path / "meta" / "esc50.csv"
 
-    # Transforms
+    # --- UPDATED TRANSFORMS (128 x 256) ---
     train_transform = nn.Sequential(
-        T.MelSpectrogram(sample_rate=22050, n_fft=1024, hop_length=512, n_mels=128, f_min=0, f_max=11025),
+        # 1. Mel Spectrogram (Height: 128)
+        # Note: sample_rate=44100 to match sf.read output
+        T.MelSpectrogram(sample_rate=44100, n_fft=1024, hop_length=512, n_mels=128, f_min=0, f_max=11025),
+        
+        # 2. Decibel Conversion
         T.AmplitudeToDB(),
+        
+        # 3. RESIZE (Forces Width to 256)
+        Resize((128, 256)),
+
+        # 4. Augmentation
         T.FrequencyMasking(freq_mask_param=30),
         T.TimeMasking(time_mask_param=80)
     )
+
     val_transform = nn.Sequential(
-        T.MelSpectrogram(sample_rate=22050, n_fft=1024, hop_length=512, n_mels=128, f_min=0, f_max=11025),
-        T.AmplitudeToDB()
+        T.MelSpectrogram(sample_rate=44100, n_fft=1024, hop_length=512, n_mels=128, f_min=0, f_max=11025),
+        T.AmplitudeToDB(),
+        Resize((128, 256)) # Resize validation data too
     )
 
     train_dataset = ESC50Dataset(dataset_path, meta_path, "train", train_transform)
@@ -195,7 +201,6 @@ def train():
         for batch_idx, (data, target) in enumerate(progress_bar):
             data, target = data.to(device), target.to(device)
 
-            # --- NEW: Save Spectrogram for First Batch Only ---
             if batch_idx == 0:
                 save_spectrogram_batch(data, target, train_dataset.classes, epoch, batch_idx, prefix="train")
 
@@ -218,14 +223,12 @@ def train():
         avg_epoch_loss = epoch_loss / len(train_dataloader)
         if avg_epoch_loss < min_loss: min_loss = avg_epoch_loss
 
-        # Validation
         model.eval()
         correct = 0; total = 0; val_loss = 0
         with torch.no_grad():
             for batch_idx, (data, target) in enumerate(test_dataloader):
                 data, target = data.to(device), target.to(device)
                 
-                # --- NEW: Save Validation Spectrogram for First Batch ---
                 if batch_idx == 0:
                     save_spectrogram_batch(data, target, val_dataset.classes, epoch, batch_idx, prefix="val")
                 
