@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torchaudio
 import torchaudio.transforms as T
-from torchvision.transforms import Resize  # <--- NEW: Required for resizing
+from torchvision.transforms import Resize  # <--- Required for resizing
 import pandas as pd
 import numpy as np
 import soundfile as sf
@@ -116,7 +116,6 @@ class ESC50Dataset(Dataset):
         audio_path = self.data_dir / "audio" / row['filename']
         if not audio_path.exists(): raise FileNotFoundError(f"❌ Missing file: {audio_path}")
         
-        # Load audio (sf.read usually returns 44100Hz for ESC-50)
         audio_np, sample_rate = sf.read(str(audio_path), dtype='float32')
         waveform = torch.from_numpy(audio_np).float()
         
@@ -148,27 +147,26 @@ def train():
     if dataset_path is None: return
     meta_path = dataset_path / "meta" / "esc50.csv"
 
-    # --- UPDATED TRANSFORMS (128 x 256) ---
+    # --- UPDATED TRANSFORMS (64 x 128) ---
     train_transform = nn.Sequential(
-        # 1. Mel Spectrogram (Height: 128)
-        # Note: sample_rate=44100 to match sf.read output
-        T.MelSpectrogram(sample_rate=44100, n_fft=1024, hop_length=512, n_mels=128, f_min=0, f_max=11025),
+        # 1. Mel Spectrogram (Height: 64)
+        T.MelSpectrogram(sample_rate=44100, n_fft=1024, hop_length=512, n_mels=64, f_min=0, f_max=11025),
         
         # 2. Decibel Conversion
         T.AmplitudeToDB(),
         
-        # 3. RESIZE (Forces Width to 256)
-        Resize((128, 256)),
+        # 3. RESIZE (Forces Width to 128)
+        Resize((64, 128)),
 
         # 4. Augmentation
-        T.FrequencyMasking(freq_mask_param=30),
-        T.TimeMasking(time_mask_param=80)
+        T.FrequencyMasking(freq_mask_param=15), # Reduced mask size for smaller image
+        T.TimeMasking(time_mask_param=40)     # Reduced mask size for smaller image
     )
 
     val_transform = nn.Sequential(
-        T.MelSpectrogram(sample_rate=44100, n_fft=1024, hop_length=512, n_mels=128, f_min=0, f_max=11025),
+        T.MelSpectrogram(sample_rate=44100, n_fft=1024, hop_length=512, n_mels=64, f_min=0, f_max=11025),
         T.AmplitudeToDB(),
-        Resize((128, 256)) # Resize validation data too
+        Resize((64, 128)) 
     )
 
     train_dataset = ESC50Dataset(dataset_path, meta_path, "train", train_transform)
