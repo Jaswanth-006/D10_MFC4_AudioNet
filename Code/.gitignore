@@ -51,3 +51,4 @@ models/
 runs/
 
 saved_mel_spectrograms/
+spectrogram_samples/
