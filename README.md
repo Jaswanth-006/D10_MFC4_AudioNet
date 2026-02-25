@@ -1,10 +1,10 @@
-# D10_MFC4_Sound Classification Using
-Residual Convolutional Neural Networks
-and Bidirectional Pseudo-Inverse Learning
+# D10_MFC4_Environmental Sound Classification Using Residual Convolutional Neural Networks and Bidirectional Pseudo-Inverse Learning
 
 ## Project Title
 
-**Environmental Audio Classification via Residual Convolutional Neural Networks**
+**Environmental Sound Classification Using
+Residual Convolutional Neural Networks
+and Bidirectional Pseudo-Inverse Learning**
 22MAT220 – Mathematics for Computing IV
 
 ---
