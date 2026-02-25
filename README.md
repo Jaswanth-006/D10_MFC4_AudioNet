@@ -1,4 +1,6 @@
-# D10_MFC4_Environmental Audio Classification via Residual CNN
+# D10_MFC4_Sound Classification Using
+Residual Convolutional Neural Networks
+and Bidirectional Pseudo-Inverse Learning
 
 ## Project Title
 
