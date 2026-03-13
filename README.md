@@ -1,6 +1,7 @@
 # Environmental Sound Classification Using Residual Convolutional Neural Networks and Bidirectional Pseudo-Inverse Learning
 
-**Team-10** 22MAT220 – Mathematics for Computing IV
+> **22MAT230 – Mathematics for Computing 4 | Semester 4 Project**
+> **Team D10 – Amrita Vishwa Vidyapeetham**
 
 ---
 
