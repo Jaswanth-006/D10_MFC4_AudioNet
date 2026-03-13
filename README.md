@@ -72,7 +72,7 @@ The proposed framework compares two fundamentally different learning paradigms:
 1. **A gradient-based Convolutional Neural Network (CNN)**, scaled up to deep Residual Networks (ResNets).
 2. **A gradient-free Bidirectional Pseudo-Inverse Learning (BiPIL) network**, which encompasses both forward and backward training processes using analytical matrix operations.
 
-![Overview](./docs/images/Screenshot%202026-02-28%20193529.png)
+![Overview](./Doc/images/Screenshot%202026-02-28%20193529.png)
 *Figure 1: Overview of the audio classification pipeline.*
 
 ### 5.2 CNN and ResNet Architecture
@@ -86,7 +86,7 @@ To better represent human auditory perception, the frequency axis is converted t
 
 $$Mel(f) = 2595 \log_{10}\left(1 + \frac{f}{700}\right)$$
 
-![Example of a Mel Spectrogram](./docs/images/Screenshot%202026-03-06%20122524.png)
+![Example of a Mel Spectrogram](./Doc/images/Screenshot%202026-03-06%20122524.png)
 *Figure 2: Example of a Mel Spectrogram. The resulting representation is treated as a 2D image input.*
 
 #### 5.2.2 Convolutional Feature Extraction
@@ -94,7 +94,7 @@ Instead of full matrix multiplication, a CNN slides learnable filters (kernels) 
 
 $$Y(i,j) = \sum_m \sum_n X(i-m,j-n)K(m,n)$$
 
-![CNN Feature Extraction](./docs/images/Screenshot%202026-02-28%20193444.png)
+![CNN Feature Extraction](./Doc/images/Screenshot%202026-02-28%20193444.png)
 *Figure 3: Hierarchical feature extraction through multiple Conv2D layers.*
 
 #### 5.2.3 Deep Residual Networks (ResNet) & The Vanishing Gradient
@@ -107,7 +107,7 @@ Let Input $x = 1$, Weight $W = 0.1$.
 * Plain CNN output after 5 layers: $0.1^5 = 0.00001$ (gradient nearly vanishes).
 * Residual CNN output after 5 layers: $1 + 5 \times 0.1 \approx 1.5$ (signal preserved).
 
-![Residual Block](./docs/images/Screenshot%202026-02-28%20193545.png)
+![Residual Block](./Doc/images/Screenshot%202026-02-28%20193545.png)
 *Figure 4: A Residual Block with the identity shortcut connection.*
 
 In a Residual Block, the mapping is reformulated as $y = \mathcal{F}(x,\{W_i\}) + x$. Because the identity matrix $I$ is added, the gradient always has a direct path ($\frac{\partial L}{\partial x} = \frac{\partial L}{\partial H} \cdot (W + I)$), ensuring stable gradient flow.
@@ -118,7 +118,7 @@ Following feature extraction, Global Average Pooling reduces spatial dimensions,
 ### 5.3 Bidirectional Pseudo-Inverse (BiPIL)
 
 #### 5.3.1 Network Structure
-![Matrix dimensional flow](./docs/images/Screenshot%202026-03-11%20230542.png)
+![Matrix dimensional flow](./Doc/images/Screenshot%202026-03-11%20230542.png)
 *Figure 5: Matrix dimensional flow of the BiPIL architecture.*
 
 The BiPIL network processes all training samples simultaneously in matrix form. A typical implementation includes:
@@ -193,16 +193,16 @@ Meanwhile, BiPIL offered rapid analytical training that significantly reduced hy
 
 ### 8.2 Training and Validation Performance (ResNet)
 
-![ResNet-26 Accuracy](./docs/images/resnet26_accuracy.jpeg)
+![ResNet-26 Accuracy](./Doc/images/resnet26_accuracy.jpeg)
 *Figure 6: Validation accuracy curve for ResNet-26 during training.*
 
-![ResNet-26 Loss](./docs/images/resnet26_loss.jpeg)
+![ResNet-26 Loss](./Doc/images/resnet26_loss.jpeg)
 *Figure 7: Training loss curve for ResNet-26 showing convergence across epochs.*
 
-![ResNet-34 Accuracy](./docs/images/resnet34_accuracy.jpeg)
+![ResNet-34 Accuracy](./Doc/images/resnet34_accuracy.jpeg)
 *Figure 8: Validation accuracy curve for ResNet-34 during training.*
 
-![ResNet-34 Loss](./docs/images/resnet34_loss.jpeg)
+![ResNet-34 Loss](./Doc/images/resnet34_loss.jpeg)
 *Figure 9: Training loss curve for ResNet-34 showing gradual reduction across epochs.*
 
 ### 8.3 Final Model Comparison
