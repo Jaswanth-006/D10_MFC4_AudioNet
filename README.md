@@ -1,20 +1,6 @@
 # Environmental Sound Classification Using Residual Convolutional Neural Networks and Bidirectional Pseudo-Inverse Learning
 
-> **22MAT230 – Mathematics for Computing 4 | Semester 4 Project**
-> **Team D10 – Amrita Vishwa Vidyapeetham**
 
----
-
-## Member Details
-
-| Name               | Roll No          | Email                                                       |
-| ------------------ | ---------------- | ----------------------------------------------------------- |
-| Aparna Bharani     | CB.SC.U4AIE24304 | [cb.sc.u4aie24304@cb.students.amrita.edu](mailto:cb.sc.u4aie24304@cb.students.amrita.edu)   |
-| Jaswanth Saravanan | CB.SC.U4AIE24324 | [cb.sc.u4aie24324@cb.students.amrita.edu](mailto:cb.sc.u4aie24324@cb.students.amrita.edu)   |
-| Parkavi R          | CB.SC.U4AIE24338 | [cb.sc.u4aie24338@cb.students.amrita.edu](mailto:cb.sc.u4aie24338@cb.students.amrita.edu)   |
-| Rajashree T        | CB.SC.U4AIE24346 | [cb.sc.u4aie24346@cb.students.amrita.edu](mailto:cb.sc.u4aie24346@cb.students.amrita.edu)   |
-
----
 
 ## Objective
 
