@@ -23,7 +23,7 @@ class AudioProcessor:
     def __init__(self):
         self.transform = nn.Sequential(
             T.MelSpectrogram(
-                sample_rate=22050, n_fft=1024, hop_length=512, n_mels=128, f_min=0, f_max=11025
+                sample_rate=44100, n_fft=1024, hop_length=512, n_mels=128
             ),
             T.AmplitudeToDB()
         )
