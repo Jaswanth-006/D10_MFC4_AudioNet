@@ -1,4 +1,5 @@
 import os
+import argparse
 import sys
 import time
 import torch
@@ -356,4 +357,8 @@ def train(validation_fold=5):
 
 if __name__ == "__main__":
 
-    train()
+    parser = argparse.ArgumentParser(description="Train AudioNet on ESC-50")
+    parser.add_argument("--validation-fold", type=int, default=5, help="Fold number to use for validation (1-5)")
+    args = parser.parse_args()
+
+    train(validation_fold=args.validation_fold)
