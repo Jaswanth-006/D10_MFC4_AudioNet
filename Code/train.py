@@ -1,4 +1,5 @@
 import os
+import argparse
 import sys
 import time
 import torch
@@ -120,7 +121,7 @@ def validate_and_fix_dataset(local_path, fallback_root):
 
 class ESC50Dataset(Dataset):
 
-    def __init__(self, data_dir, metadata_file, split="train", transform=None):
+    def __init__(self, data_dir, metadata_file, split="train", transform=None, validation_fold=5):
 
         self.data_dir = Path(data_dir)
 
@@ -130,11 +131,11 @@ class ESC50Dataset(Dataset):
 
         if split == 'train':
 
-            self.metadata = self.metadata[self.metadata['fold'] != 5]
+            self.metadata = self.metadata[self.metadata['fold'] != validation_fold]
 
         else:
 
-            self.metadata = self.metadata[self.metadata['fold'] == 5]
+            self.metadata = self.metadata[self.metadata['fold'] == validation_fold]
 
         self.classes = sorted(self.metadata['category'].unique())
 
@@ -195,7 +196,7 @@ def mixup_criterion(criterion, pred, y_a, y_b, lam):
     return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
 
-def train():
+def train(validation_fold=5):
 
     MODEL_DIR.mkdir(exist_ok=True)
 
@@ -230,9 +231,9 @@ def train():
     )
 
 
-    train_dataset = ESC50Dataset(dataset_path, meta_path, "train", train_transform)
+    train_dataset = ESC50Dataset(dataset_path, meta_path, "train", train_transform, validation_fold=validation_fold)
 
-    val_dataset = ESC50Dataset(dataset_path, meta_path, "test", val_transform)
+    val_dataset = ESC50Dataset(dataset_path, meta_path, "test", val_transform, validation_fold=validation_fold)
 
 
     train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
@@ -356,4 +357,8 @@ def train():
 
 if __name__ == "__main__":
 
-    train()
+    parser = argparse.ArgumentParser(description="Train AudioNet on ESC-50")
+    parser.add_argument("--validation-fold", type=int, default=5, help="Fold number to use for validation (1-5)")
+    args = parser.parse_args()
+
+    train(validation_fold=args.validation_fold)
