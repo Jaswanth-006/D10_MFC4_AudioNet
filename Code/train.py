@@ -346,7 +346,10 @@ def train():
 
             best_accuracy = accuracy
 
-            torch.save(model.state_dict(), MODEL_DIR / "best_model.pth")
+            torch.save({
+                'classes': train_dataset.classes,
+                'model_state_dict': model.state_dict()
+            }, MODEL_DIR / "best_model.pth")
 
             print("New best model saved")
 
