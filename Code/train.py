@@ -21,7 +21,7 @@ from torch.utils.tensorboard import SummaryWriter
 from model import AudioCNN
 
 
-LOCAL_SOURCE_PATH = Path(r"C:\CSE-AI\SEM-4\Mathematics for Computing 4\Dataset\ESC-50-master")
+LOCAL_SOURCE_PATH = Path(os.getenv("ESC50_PATH", "./Dataset/ESC-50-master"))
 DATA_ROOT = Path("./data")
 MODEL_DIR = Path("./models")
 LOG_DIR = Path("./runs/ResNet_39_Experiment")
